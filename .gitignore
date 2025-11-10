@@ -1,0 +1,21 @@
+# Python virtual environment
+/venv/
+
+# IDE files
+.idea/
+.vscode/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Elasticsearch data (from docker-compose)
+/es_data/
+
+# Local data files
+/data/
+*.csv
+*.json
+
+# Windows thumbnails
+Thumbs.db
