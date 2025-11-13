@@ -12,7 +12,7 @@ BOOKS_DIR = os.path.join(DATA_DIR, "books")
 METADATA_FILE = os.path.join(DATA_DIR, "metadata.json")
 
 # Gutendex API Configuration
-GUTENBERG_API = "http://gutendex.com/books/"
+GUTENDEX_API = "http://gutendex.com/books/"
 
 # Project Constraints
 TARGET_BOOK_COUNT = 1670  # Requirement: > 1664 books
