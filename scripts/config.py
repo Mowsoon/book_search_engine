@@ -1,5 +1,6 @@
 # scripts/config.py
 import os
+import multiprocessing
 
 # --- Path Configuration ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,3 +23,16 @@ ES_INDEX_NAME = 'gutenberg_books'
 TARGET_BOOK_COUNT = 1670
 MIN_WORD_COUNT = 10000
 JACCARD_THRESHOLD = 0.15
+
+
+# --- Performance Configuration ---
+# 1. Heavy Task (Jaccard Similarity)
+# High RAM usage per process (needs book text in memory).
+# Limit this to avoid swapping/freezing on Windows.
+# We use 6 workers as a safe baseline for 32GB RAM.
+WORKERS_JACCARD = min(6, multiprocessing.cpu_count())
+
+# 2. Light Task (Closeness Centrality)
+# Low RAM usage (graph structure only), purely CPU bound.
+# We can safely use ALL available cores for maximum speed.
+WORKERS_CLOSENESS = multiprocessing.cpu_count()
