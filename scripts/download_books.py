@@ -14,9 +14,7 @@ except ImportError:
 
 
 def get_robust_session():
-    """
-    Creates a requests session with automatic retry logic.
-    """
+    """Creates a requests session with automatic retry logic."""
     session = requests.Session()
     # Retry 3 times on connection errors or 5xx server errors
     # backoff_factor=1 means: wait 1s, then 2s, then 4s between retries
@@ -75,9 +73,7 @@ def extract_metadata(book):
 
 
 def process_single_book(session, book_data):
-    """
-    Downloads book if needed, using the robust session.
-    """
+    """Downloads book if needed, using the robust session."""
     meta, url = extract_metadata(book_data)
     if not meta:
         return None
