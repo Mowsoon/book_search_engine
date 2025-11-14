@@ -1,3 +1,4 @@
+# scripts/index_to_elasticsearch.py
 import os
 import json
 import logging
