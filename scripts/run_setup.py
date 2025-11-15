@@ -8,7 +8,7 @@ import requests
 def run_command(command, step_name, ignore_error=False):
     """Helper to run a shell command."""
     print(f"\n========================================")
-    print(f"🚀 STEP: {step_name}")
+    print(f"STEP: {step_name}")
     print(f"========================================\n")
     try:
         if command[0] == "python":
@@ -26,7 +26,7 @@ def run_command(command, step_name, ignore_error=False):
 def wait_for_elasticsearch():
     """Waits for ES to be responsive."""
     url = "http://localhost:9200"
-    print("⏳ Waiting for Elasticsearch to start...")
+    print("Waiting for Elasticsearch to start...")
     for i in range(60):
         try:
             if requests.get(url).status_code == 200:
@@ -41,7 +41,7 @@ def wait_for_elasticsearch():
 
 
 def main():
-    print("🤖 STARTING OPTIMIZED SETUP 🤖")
+    print("STARTING OPTIMIZED SETUP")
 
     # --- PHASE 1: DATA DOWNLOAD & INDEXING (Needs Docker) ---
 
@@ -72,7 +72,7 @@ def main():
     run_command(["docker-compose", "start"], "Restarting Docker")
     wait_for_elasticsearch()
 
-    print("\n🎉 ALL DONE! PROJECT IS READY. 🎉")
+    print("\nALL DONE! PROJECT IS READY.")
 
 
 if __name__ == "__main__":
