@@ -1,4 +1,3 @@
-# scripts/run_setup.py
 import subprocess
 import time
 import sys

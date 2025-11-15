@@ -1,4 +1,3 @@
-# scripts/build_graphs.py
 import os
 import re
 import time

@@ -1,4 +1,3 @@
-# scripts/config.py
 import os
 import multiprocessing
 
