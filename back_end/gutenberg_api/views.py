@@ -97,13 +97,21 @@ class AdvancedSearchView(BaseSearchView):
         if not regex:
             return Response({"error": "Missing 'q' parameter"}, status=400)
 
+        # --- CORRECTION ICI ---
+        # Elasticsearch indexe en minuscules ('standard' analyzer).
+        # On doit convertir la RegEx en minuscules pour qu'elle matche les tokens.
+        regex = regex.lower()
+        # ----------------------
+
         s = Search(using=ES_CLIENT, index=ES_INDEX)
         # ElasticSearch 'regexp' query
         s = s.query("regexp", content={"value": regex, "flags": "ALL"})
 
         try:
+            # On limite à 50 résultats car les RegEx sont coûteuses
             response = s[0:50].execute()
         except Exception as e:
+            # En cas de syntaxe RegEx invalide (ex: parenthèse non fermée)
             return Response({"error": f"Search Error: {str(e)}"}, status=400)
 
         final_results = self.calculate_ranking(response)
