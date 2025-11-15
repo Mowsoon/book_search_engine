@@ -1,4 +1,7 @@
+import os
+
 from django.apps import apps
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from elasticsearch_dsl import Search
@@ -150,3 +153,28 @@ class SuggestionView(APIView):
         } for hit in response]
 
         return Response({"results": suggestions})
+
+
+class BookContentView(APIView):
+    """
+    GET /api/book/<id>/content
+    Reads the local .txt file and returns its content.
+    """
+
+    def get(self, request, book_id):
+        # Construct absolute path to the book file
+        file_path = os.path.join(settings.DATA_DIR, 'books', f"{book_id}.txt")
+
+        if not os.path.exists(file_path):
+            return Response({"error": "Book text not found locally."}, status=404)
+
+        try:
+            # Read the file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Return as JSON (safer than raw text for frontend handling)
+            return Response({"id": book_id, "content": content})
+
+        except Exception as e:
+            return Response({"error": f"Error reading file: {str(e)}"}, status=500)

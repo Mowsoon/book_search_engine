@@ -9,6 +9,7 @@
             --primary: #2c3e50;
             --secondary: #3498db;
             --accent: #e74c3c;
+            --success: #27ae60;
             --bg: #f5f6fa;
             --card-bg: #ffffff;
         }
@@ -116,7 +117,8 @@
             border-radius: 8px;
             padding: 10px;
             font-size: 0.85rem;
-            margin-top: auto; /* Push to bottom */
+            margin-top: auto;
+            margin-bottom: 15px;
         }
 
         .score-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
@@ -131,15 +133,34 @@
             font-weight: 700;
         }
 
+        /* Buttons Area */
+        .card-actions {
+            margin-top: auto;
+            display: flex;
+            gap: 10px;
+        }
+
         .btn-suggest {
-            margin-top: 15px;
-            width: 100%;
+            flex: 1;
             padding: 10px;
             background: white;
             border: 2px solid var(--primary);
             color: var(--primary);
+            border-radius: 6px;
+            font-size: 0.9rem;
         }
         .btn-suggest:hover { background: var(--primary); color: white; }
+
+        .btn-read {
+            flex: 1;
+            padding: 10px;
+            background: var(--success);
+            border: 2px solid var(--success);
+            color: white;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .btn-read:hover { background: #219150; border-color: #219150; }
 
         /* Loader */
         .loader {
@@ -148,6 +169,60 @@
             padding: 40px;
             font-size: 1.5rem;
             color: var(--secondary);
+        }
+
+        /* --- MODAL (For Reading) --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5vh auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            border-radius: 12px 12px 0 0;
+        }
+        .modal-header h2 { margin: 0; font-size: 1.5rem; color: var(--primary); }
+
+        .close-btn {
+            font-size: 2rem;
+            color: #aaa;
+            cursor: pointer;
+            line-height: 1rem;
+        }
+        .close-btn:hover { color: #000; }
+
+        .modal-body {
+            padding: 30px;
+            overflow-y: auto;
+            font-family: 'Georgia', serif; /* Better for reading */
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: #2c3e50;
+            background: #fafafa;
+            white-space: pre-wrap; /* Preserve paragraphs */
         }
     </style>
 </head>
@@ -175,13 +250,24 @@
         </div>
     </header>
 
-    <div id="loader" class="loader">Searching library... ⏳</div>
+    <div id="loader" class="loader">Processing... ⏳</div>
     <div id="stats" class="stats"></div>
     <div id="results-grid" class="grid"></div>
 </div>
 
+<div id="reading-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal-title">Book Title</h2>
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+        </div>
+        <div class="modal-body" id="modal-text">
+            Loading text...
+        </div>
+    </div>
+</div>
+
 <script>
-    // Determines current host automatically (localhost or LAN IP for mobile)
     const API_BASE = '/api';
 
     function handleEnter(e, type) {
@@ -198,20 +284,18 @@
         let url = '';
         let query = '';
 
-        // Determine mode
         if (type === 'simple') {
             query = simpleInput.value.trim();
             if (!query) return;
             url = `${API_BASE}/search?q=${encodeURIComponent(query)}`;
-            regexInput.value = ''; // Clear other input
+            regexInput.value = '';
         } else {
             query = regexInput.value.trim();
             if (!query) return;
             url = `${API_BASE}/search/advanced?q=${encodeURIComponent(query)}`;
-            simpleInput.value = ''; // Clear other input
+            simpleInput.value = '';
         }
 
-        // UI State: Loading
         grid.innerHTML = '';
         stats.textContent = '';
         loader.style.display = 'block';
@@ -265,7 +349,7 @@
             }
 
             stats.textContent = `Recommendations based on "${bookTitle}" (Jaccard Similarity):`;
-            renderGrid(data.results, false); // False = don't show ranking scores for suggestions
+            renderGrid(data.results, false);
 
         } catch (error) {
             loader.style.display = 'none';
@@ -273,28 +357,66 @@
         }
     }
 
+    // --- NEW FUNCTION: Read Book ---
+    async function readBook(bookId, bookTitle) {
+        const modal = document.getElementById('reading-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalText = document.getElementById('modal-text');
+
+        modalTitle.textContent = bookTitle;
+        modalText.textContent = "Downloading book content...";
+        modal.style.display = "block";
+
+        try {
+            const response = await fetch(`${API_BASE}/book/${bookId}/content`);
+
+            if (response.status === 404) {
+                modalText.textContent = "Sorry, the text for this book is not available locally.";
+                return;
+            }
+
+            const data = await response.json();
+            // Limit text size for UI performance if it's massive (>1MB)
+            // But usually browsers handle plain text well.
+            modalText.textContent = data.content;
+
+        } catch (error) {
+            modalText.textContent = "Error loading text.";
+            console.error(error);
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('reading-modal').style.display = "none";
+    }
+
+    // Close modal if clicked outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('reading-modal');
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+
     function renderGrid(books, showScores) {
         const grid = document.getElementById('results-grid');
 
         books.forEach(book => {
-            // Create Card
             const card = document.createElement('div');
             card.className = 'card';
 
-            // Image Handling
             const imgUrl = book.image_url || 'https://via.placeholder.com/300x450?text=No+Cover';
 
-            // Score Section (Only for search results)
             let scoreHtml = '';
             if (showScores && book.details) {
                 scoreHtml = `
                     <div class="scores-box">
                         <div class="score-row">
-                            <span class="score-label">TF-IDF (Elastic)</span>
+                            <span class="score-label">TF-IDF</span>
                             <span class="score-val">${book.details.tf_idf}</span>
                         </div>
                         <div class="score-row">
-                            <span class="score-label">PageRank (Graph)</span>
+                            <span class="score-label">PageRank</span>
                             <span class="score-val">${book.details.pagerank}</span>
                         </div>
                         <div class="score-row total-score">
@@ -305,6 +427,7 @@
                 `;
             }
 
+            // --- UPDATED: Added card-actions div with READ button ---
             card.innerHTML = `
                 <div class="card-img-container">
                     <img src="${imgUrl}" loading="lazy" alt="Cover">
@@ -315,9 +438,14 @@
 
                     ${scoreHtml}
 
-                    <button class="btn-suggest" onclick="getSuggestions(${book.id}, '${book.title.replace(/'/g, "\\'")}')">
-                        Show Similar Books
-                    </button>
+                    <div class="card-actions">
+                        <button class="btn-suggest" onclick="getSuggestions(${book.id}, '${book.title.replace(/'/g, "\\'")}')">
+                            Suggest
+                        </button>
+                        <button class="btn-read" onclick="readBook(${book.id}, '${book.title.replace(/'/g, "\\'")}')">
+                            Read
+                        </button>
+                    </div>
                 </div>
             `;
 

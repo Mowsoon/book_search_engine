@@ -18,4 +18,7 @@ urlpatterns = [
 
     path('api/book/<int:book_id>/suggestions',
          views.SuggestionView.as_view(), name='suggestions'),
+
+    path('api/book/<int:book_id>/content',
+         views.BookContentView.as_view(), name='book_content'),
 ]
