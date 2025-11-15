@@ -4,10 +4,12 @@ import statistics
 import csv
 import os
 
+from scripts.config import DATA_DIR
+
 # Configuration
 API_URL = "http://127.0.0.1:8000/api"
 ITERATIONS = 500
-OUTPUT_FILE = "api_performance_stats.csv"
+OUTPUT_FILE = os.path.join(DATA_DIR, "api_performance_stats.csv")
 
 # Define test scenarios
 SCENARIOS = [
