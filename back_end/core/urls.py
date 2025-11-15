@@ -1,9 +1,13 @@
 from django.contrib import admin
 from django.urls import path
 from gutenberg_api import views
+from core.views import HomeView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+# --- The Frontend ---
+    path('', HomeView.as_view(), name='home'),
 
     # API Endpoints
     path('api/search',

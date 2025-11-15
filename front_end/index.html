@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gutenberg Search Engine</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --accent: #e74c3c;
+            --bg: #f5f6fa;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--primary);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container { max_width: 1200px; margin: 0 auto; }
+
+        /* --- Header & Search Bar --- */
+        header { text-align: center; margin-bottom: 30px; }
+        h1 { margin-bottom: 10px; font-size: 2.5rem; }
+        p.subtitle { color: #7f8c8d; margin-bottom: 30px; }
+
+        .search-container {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .input-group { position: relative; flex: 1; min-width: 280px; }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+        input:focus { border-color: var(--secondary); outline: none; }
+
+        button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            color: white;
+        }
+        button:active { transform: scale(0.98); }
+
+        .btn-simple { background-color: var(--secondary); }
+        .btn-regex { background-color: var(--accent); }
+
+        /* --- Results Grid --- */
+        .stats { margin: 20px 0; font-style: italic; color: #7f8c8d; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+
+        .card-img-container {
+            height: 200px;
+            background: #ecf0f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .card-img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s;
+        }
+
+        .card-body { padding: 20px; flex-grow: 1; display: flex; flex-direction: column; }
+
+        .card-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 5px 0; line-height: 1.4; }
+        .card-author { color: #7f8c8d; font-size: 0.9rem; margin-bottom: 15px; }
+
+        /* Scores Badge */
+        .scores-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 0.85rem;
+            margin-top: auto; /* Push to bottom */
+        }
+
+        .score-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .score-label { color: #95a5a6; }
+        .score-val { font-weight: 600; font-family: monospace; }
+
+        .total-score {
+            border-top: 1px solid #e1e1e1;
+            margin-top: 6px;
+            padding-top: 6px;
+            color: var(--secondary);
+            font-weight: 700;
+        }
+
+        .btn-suggest {
+            margin-top: 15px;
+            width: 100%;
+            padding: 10px;
+            background: white;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+        .btn-suggest:hover { background: var(--primary); color: white; }
+
+        /* Loader */
+        .loader {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            font-size: 1.5rem;
+            color: var(--secondary);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>📚 Gutenberg Engine</h1>
+        <p class="subtitle">Full-Text Search & Regex • PageRank • Jaccard Recommendations</p>
+
+        <div class="search-container">
+            <div class="input-group">
+                <input type="text" id="simple-query" placeholder="Keyword search (e.g. Frankenstein)..."
+                       onkeypress="handleEnter(event, 'simple')">
+            </div>
+            <button class="btn-simple" onclick="performSearch('simple')">Search</button>
+
+            <div style="width: 1px; height: 40px; background: #eee; margin: 0 10px;"></div>
+
+            <div class="input-group">
+                <input type="text" id="regex-query" placeholder="RegEx (e.g. fran.*stein)..."
+                       onkeypress="handleEnter(event, 'regex')">
+            </div>
+            <button class="btn-regex" onclick="performSearch('regex')">Advanced (RegEx)</button>
+        </div>
+    </header>
+
+    <div id="loader" class="loader">Searching library... ⏳</div>
+    <div id="stats" class="stats"></div>
+    <div id="results-grid" class="grid"></div>
+</div>
+
+<script>
+    // Determines current host automatically (localhost or LAN IP for mobile)
+    const API_BASE = '/api';
+
+    function handleEnter(e, type) {
+        if (e.key === 'Enter') performSearch(type);
+    }
+
+    async function performSearch(type) {
+        const simpleInput = document.getElementById('simple-query');
+        const regexInput = document.getElementById('regex-query');
+        const grid = document.getElementById('results-grid');
+        const stats = document.getElementById('stats');
+        const loader = document.getElementById('loader');
+
+        let url = '';
+        let query = '';
+
+        // Determine mode
+        if (type === 'simple') {
+            query = simpleInput.value.trim();
+            if (!query) return;
+            url = `${API_BASE}/search?q=${encodeURIComponent(query)}`;
+            regexInput.value = ''; // Clear other input
+        } else {
+            query = regexInput.value.trim();
+            if (!query) return;
+            url = `${API_BASE}/search/advanced?q=${encodeURIComponent(query)}`;
+            simpleInput.value = ''; // Clear other input
+        }
+
+        // UI State: Loading
+        grid.innerHTML = '';
+        stats.textContent = '';
+        loader.style.display = 'block';
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            loader.style.display = 'none';
+
+            if (data.error) {
+                stats.innerHTML = `<span style="color: var(--accent)">Error: ${data.error}</span>`;
+                return;
+            }
+
+            stats.textContent = `Found ${data.count} documents matching "${query}" (Top ${data.results.length} shown)`;
+
+            if (data.results.length === 0) {
+                grid.innerHTML = '<div style="text-align:center; grid-column: 1/-1;">No results found.</div>';
+                return;
+            }
+
+            renderGrid(data.results, true);
+
+        } catch (error) {
+            loader.style.display = 'none';
+            stats.textContent = 'Network Error. Is the server running?';
+            console.error(error);
+        }
+    }
+
+    async function getSuggestions(bookId, bookTitle) {
+        const loader = document.getElementById('loader');
+        const grid = document.getElementById('results-grid');
+        const stats = document.getElementById('stats');
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        grid.innerHTML = '';
+        loader.style.display = 'block';
+        stats.textContent = `Finding recommendations for "${bookTitle}"...`;
+
+        try {
+            const response = await fetch(`${API_BASE}/book/${bookId}/suggestions`);
+            const data = await response.json();
+
+            loader.style.display = 'none';
+
+            if (!data.results || data.results.length === 0) {
+                stats.textContent = `No specific recommendations found for "${bookTitle}" (Isolated node in Jaccard Graph).`;
+                return;
+            }
+
+            stats.textContent = `Recommendations based on "${bookTitle}" (Jaccard Similarity):`;
+            renderGrid(data.results, false); // False = don't show ranking scores for suggestions
+
+        } catch (error) {
+            loader.style.display = 'none';
+            stats.textContent = 'Error fetching suggestions.';
+        }
+    }
+
+    function renderGrid(books, showScores) {
+        const grid = document.getElementById('results-grid');
+
+        books.forEach(book => {
+            // Create Card
+            const card = document.createElement('div');
+            card.className = 'card';
+
+            // Image Handling
+            const imgUrl = book.image_url || 'https://via.placeholder.com/300x450?text=No+Cover';
+
+            // Score Section (Only for search results)
+            let scoreHtml = '';
+            if (showScores && book.details) {
+                scoreHtml = `
+                    <div class="scores-box">
+                        <div class="score-row">
+                            <span class="score-label">TF-IDF (Elastic)</span>
+                            <span class="score-val">${book.details.tf_idf}</span>
+                        </div>
+                        <div class="score-row">
+                            <span class="score-label">PageRank (Graph)</span>
+                            <span class="score-val">${book.details.pagerank}</span>
+                        </div>
+                        <div class="score-row total-score">
+                            <span>Global Score</span>
+                            <span>${book.score}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="card-img-container">
+                    <img src="${imgUrl}" loading="lazy" alt="Cover">
+                </div>
+                <div class="card-body">
+                    <div class="card-title">${book.title}</div>
+                    <div class="card-author">${book.author}</div>
+
+                    ${scoreHtml}
+
+                    <button class="btn-suggest" onclick="getSuggestions(${book.id}, '${book.title.replace(/'/g, "\\'")}')">
+                        Show Similar Books
+                    </button>
+                </div>
+            `;
+
+            grid.appendChild(card);
+        });
+    }
+</script>
+
+</body>
+</html>
