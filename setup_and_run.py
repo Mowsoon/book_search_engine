@@ -85,14 +85,31 @@ def start_services():
         print("❌ Docker is not installed or not in PATH.")
         sys.exit(1)
 
-    # We need to use the venv's python to import requests for the check
-    subprocess.check_call([PYTHON_EXEC, "-c",
-                           "import requests, time; "
-                           "url='http://localhost:9200'; "
-                           "print('Waiting for ES...'); "
-                           "[(time.sleep(1), print('.', end='', flush=True)) for _ in range(60) if requests.get(url, verify=False).status_code != 200]; "
-                           "print('Ready!')"
-                           ])
+    wait_script = """
+import requests
+import time
+import sys
+
+url = 'http://localhost:9200'
+print('Waiting for ElasticSearch...', end='', flush=True)
+
+for i in range(60):
+    try:
+        # Timeout court pour ne pas bloquer si le port est ouvert mais ne repond pas
+        if requests.get(url, timeout=1).status_code == 200:
+            print('\\n✅ Elasticsearch is ready!')
+            sys.exit(0)
+    except Exception:
+        # On attrape TOUT (ConnectionError, RemoteDisconnected, Timeout...)
+        pass
+
+    time.sleep(1)
+    print('.', end='', flush=True)
+
+print('\\n❌ Error: Elasticsearch unreachable after 60s.')
+sys.exit(1)
+"""
+    subprocess.check_call([PYTHON_EXEC, "-c", wait_script])
 
 
 def main():
