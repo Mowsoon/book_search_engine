@@ -122,7 +122,7 @@ def build_edges_parallel(books):
     n = len(book_ids)
     cores = config.WORKERS.ram_intensive
 
-    print(f"Computing similarities for {n} books on {cores} CPU cores (RAM Safe)...")
+    print(f"Computing similarities for {n} books on {cores} CPU cores ...")
     start = time.time()
 
     with Pool(processes=cores, initializer=worker_init_books, initargs=(books, book_ids)) as pool:
