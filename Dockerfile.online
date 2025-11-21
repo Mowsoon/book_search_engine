@@ -1,29 +1,36 @@
-# Image légère basée sur Debian (supporte mieux les wheels Python que Alpine)
-FROM python:3.13-slim
+# --- Stage 1: Builder  ---
+FROM python:3.13-slim as builder
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 
-# Installation des dépendances "Online"
+
 COPY requirements.online.txt .
-RUN pip install --no-cache-dir -r requirements.online.txt
+RUN pip install --user --no-cache-dir -r requirements.online.txt
 
-# Copie du code Backend et du Frontend (pour le servir via Django)
+# --- Stage 2: Final (Production Image) ---
+FROM python:3.13-slim
+
+RUN useradd -m appuser
+WORKDIR /app
+
+COPY --from=builder /root/.local /home/appuser/.local
+
 COPY back_end/ ./back_end/
 COPY front_end/ ./front_end/
 
-# Copie des données (nécessaire pour que apps.py charge les CSV)
-# Note : En dev, on utilisera un VOLUME pour que ça reste à jour
-COPY data/ ./data/
 
-# Variable d'env pour que Django sache qu'il est dans Docker
+RUN mkdir -p data
+
 ENV IN_DOCKER=1
 ENV PYTHONUNBUFFERED=1
+ENV PATH=/home/appuser/.local/bin:$PATH
 
-# On se place dans le dossier contenant manage.py
+
+USER appuser
+
 WORKDIR /app/back_end
 
-# Port exposé
 EXPOSE 8000
 
-# Commande de lancement
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

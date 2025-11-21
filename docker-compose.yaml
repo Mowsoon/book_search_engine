@@ -22,6 +22,7 @@ services:
       start_period: 10s
 
   online:
+    image: book_engine:online
     build:
       context: .
       dockerfile: Dockerfile.online
@@ -44,6 +45,7 @@ services:
           memory: 4G
 
   offline:
+    image: book_engine:offline
     build:
       context: .
       dockerfile: Dockerfile.offline
@@ -51,13 +53,14 @@ services:
     volumes:
       - ./scripts:/app/scripts
       - ./data:/app/data
+      - ./benchmarks:/app/benchmarks
     environment:
       - ES_HOST=http://elasticsearch:9200
     deploy:
       resources:
         limits:
           cpus: '20'
-          memory: 16G
+          memory: 20G
     depends_on:
       elasticsearch:
         condition: service_healthy
