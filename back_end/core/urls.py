@@ -6,7 +6,7 @@ from core.views import HomeView
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-# --- The Frontend ---
+    # --- The Frontend ---
     path('', HomeView.as_view(), name='home'),
 
     # API Endpoints
