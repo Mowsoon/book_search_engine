@@ -17,6 +17,7 @@ __pycache__/
 *.csv
 *.json
 data
+documentation
 
 # Windows thumbnails
 Thumbs.db
