@@ -34,7 +34,7 @@ def init_worker_loader():
 def process_single_book_file(filename):
     """Worker function to load and clean one book file."""
     book_id = filename.replace(".txt", "")
-    path = os.path.join(config.BOOKS_DIR, filename)
+    path = os.path.join(config.PATHS["books"], filename)
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -53,19 +53,19 @@ def process_single_book_file(filename):
     except IOError:
         return None
 
+
 def load_books_parallel():
     """Loads all book files in parallel."""
-    if not os.path.exists(config.BOOKS_DIR):
-        print(f"[ERROR] No books found in {config.BOOKS_DIR}")
+    books_dir = config.PATHS["books"]
+    if not os.path.exists(books_dir):
+        print(f"[ERROR] No books found in {books_dir}")
         return {}
+    file_list = [f for f in os.listdir(books_dir) if f.endswith(".txt")]
 
-    file_list = [f for f in os.listdir(config.BOOKS_DIR) if f.endswith(".txt")]
-    print(f"Loading and cleaning {len(file_list)} books on {config.WORKERS_MAX} cores...")
+    workers = config.WORKERS.cpu_intensive
+    print(f"Loading and cleaning {len(file_list)} books on {workers} cores...")
 
     start = time.time()
-    workers = getattr(config, 'WORKERS_CLOSENESS', 4)
-    if hasattr(config, 'WORKERS_MAX'): workers = config.WORKERS_MAX
-
     with Pool(processes=workers, initializer=init_worker_loader) as pool:
         results = pool.map(process_single_book_file, file_list, chunksize=20)
 
@@ -99,13 +99,13 @@ def worker_compare_row(i):
     set_a = SHARED_BOOKS[id_a]
     n = len(SHARED_IDS)
 
-    # Compare against all subsequent books
+    threshold = config.CONSTRAINTS["jaccard_threshold"]
     for j in range(i + 1, n):
         id_b = SHARED_IDS[j]
         set_b = SHARED_BOOKS[id_b]
 
         score = compute_jaccard(set_a, set_b)
-        if score > config.JACCARD_THRESHOLD:
+        if score > threshold:
             local_edges.append((id_a, id_b, score))
     return local_edges
 
@@ -120,7 +120,7 @@ def worker_closeness(nodes_subset):
 def build_edges_parallel(books):
     book_ids = list(books.keys())
     n = len(book_ids)
-    cores = config.WORKERS_JACCARD
+    cores = config.WORKERS.ram_intensive
 
     print(f"Computing similarities for {n} books on {cores} CPU cores (RAM Safe)...")
     start = time.time()
@@ -143,17 +143,16 @@ def compute_centrality_parallel(edges):
 
     print(f"Graph built: {graph.number_of_nodes()} nodes.")
 
-    # PageRank
+    # PageRank (Sequential is fast enough)
     pr_graph = nx.Graph()
     pr_graph.add_weighted_edges_from(edges)
     print("Calculating PageRank...")
     pagerank = nx.pagerank(pr_graph, weight='weight')
 
-    # Closeness (Max Cores)
-    cores = getattr(config, 'WORKERS_CLOSENESS', 4)
-    if hasattr(config, 'WORKERS_MAX'): cores = config.WORKERS_MAX
+    # Closeness (Parallel - Max Cores)
+    cores = config.WORKERS.cpu_intensive
 
-    print(f"Calculating Closeness on {cores} cores...")
+    print(f"Calculating Closeness on {cores} cores (CPU Intensive)...")
     nodes_list = list(graph.nodes())
 
     if nodes_list:
@@ -180,15 +179,22 @@ def compute_centrality_parallel(edges):
         for node in nodes_list
     ])
 
+
 def save_data(df_ranks, edges):
     if df_ranks.empty:
         print("[WARN] No ranking data to save.")
         return
+
+    rank_file = config.PATHS["ranks_csv"]
+    graph_file = config.PATHS["graph_csv"]
+    data_dir = config.PATHS["data"]
+
     df_ranks.sort_values("pagerank", ascending=False, inplace=True)
-    df_ranks.to_csv(config.RANK_FILE, index=False)
+    df_ranks.to_csv(rank_file, index=False)
+
     df_edges = pd.DataFrame(edges, columns=["source", "target", "weight"])
-    df_edges.to_csv(config.GRAPH_FILE, index=False)
-    print(f"Saved data to {config.DATA_DIR}")
+    df_edges.to_csv(graph_file, index=False)
+    print(f"Saved data to {data_dir}")
 
 if __name__ == "__main__":
     print("Starting Graph Build Script...")
