@@ -26,13 +26,14 @@ RANK_FILE = os.path.join(DATA_DIR, "book_ranks.csv")
 JACCARD_THRESHOLD = 0.15
 
 # --- Performance Configuration ---
-# 1. Heavy Task (Jaccard Similarity)
-# High RAM usage per process (needs book text in memory).
-# Limit this to avoid swapping/freezing on Windows.
-# We use 6 workers as a safe baseline for 32GB RAM.
-WORKERS_JACCARD = min(6, multiprocessing.cpu_count())
 
-# 2. Light Task (Closeness Centrality)
-# Low RAM usage (graph structure only), purely CPU bound.
-# We can safely use ALL available cores for maximum speed.
-WORKERS_CLOSENESS = multiprocessing.cpu_count()
+IN_DOCKER = os.environ.get('IN_DOCKER', '0') == '1'
+
+if IN_DOCKER:
+    # --- DOCKER SETTINGS (Linux/Fork) ---
+    WORKERS_MAX = 20
+    WORKERS_JACCARD = 10
+else:
+    # --- LOCAL WINDOWS SETTINGS (Spawn) ---
+    WORKERS_JACCARD = min(6, multiprocessing.cpu_count())
+    WORKERS_MAX = multiprocessing.cpu_count()
