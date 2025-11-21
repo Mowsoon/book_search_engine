@@ -112,6 +112,37 @@ def process_book_task(book_data):
 
     return None
 
+def clean_orphans(valid_metadata):
+    """
+    Removes .txt files that are not present in the metadata.
+    Ensures consistency between disk and index.
+    """
+    print("\n🧹 Starting final cleanup of orphan files...")
+
+    # Create a set of valid IDs for O(1) lookup
+    valid_ids = {str(book['id']) for book in valid_metadata}
+
+    files = os.listdir(config.PATHS["books"])
+    deleted_count = 0
+
+    for filename in files:
+        if not filename.endswith(".txt"):
+            continue
+
+        book_id = filename.replace(".txt", "")
+
+        if book_id not in valid_ids:
+            file_path = os.path.join(config.PATHS["books"], filename)
+            try:
+                os.remove(file_path)
+                deleted_count += 1
+            except OSError:
+                pass
+
+    if deleted_count > 0:
+        print(f"Cleanup finished. Deleted {deleted_count} orphan files.")
+    else:
+        print("No orphan files found. Directory is clean.")
 
 def fetch_books():
     """Main execution loop using Optimized Turbo Logic."""
@@ -139,7 +170,7 @@ def fetch_books():
     session = get_robust_session()
 
     print(f"Target: {target_count} books.")
-    print(f"Strategy: Turbo Download ({workers} workers)")
+    print(f"Download with {workers} workers:")
 
     # Future tracking
     all_futures = []
@@ -169,7 +200,7 @@ def fetch_books():
                 # Fetch list page
                 resp = session.get(next_url, timeout=10)
                 if resp.status_code == 429:
-                    print("⚠️ API List Rate Limit. Waiting 10s...")
+                    print("API List Rate Limit. Waiting 10s...")
                     time.sleep(10)
                     continue
 
@@ -229,6 +260,8 @@ def fetch_books():
         json.dump(books_metadata, f, indent=4)
 
     print(f"Done. Total library size: {len(books_metadata)} books.")
+
+    clean_orphans(books_metadata)
 
 
 if __name__ == "__main__":

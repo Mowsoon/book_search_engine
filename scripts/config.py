@@ -71,7 +71,7 @@ class ResourceAllocator:
         """
         For Network/Disk tasks (e.g., Elastic Indexing, Downloading).
         """
-        return 20 if IN_DOCKER else 8
+        return 8 if IN_DOCKER else 4
 
     @property
     def download(self):
