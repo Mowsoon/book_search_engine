@@ -2,7 +2,6 @@ import os
 import multiprocessing
 
 # --- 1. ENVIRONMENT CONTEXT ---
-# We detect the environment once to drive logic later
 IN_DOCKER = os.environ.get('IN_DOCKER', '0') == '1'
 SYSTEM_CORES = multiprocessing.cpu_count()
 
@@ -20,7 +19,6 @@ PATHS = {
 GUTENDEX_API = "http://gutendex.com/books/"
 
 # --- 3. ELASTICSEARCH CONFIGURATION ---
-# Grouping ES settings makes the client initialization cleaner
 ELASTIC = {
     "host": os.environ.get('ES_HOST', 'http://localhost:9200'),
     "index_name": 'gutenberg_books',
@@ -35,13 +33,19 @@ CONSTRAINTS = {
     "jaccard_threshold": 0.15
 }
 
+# --- 5. NETWORK & RETRY STRATEGY ---
+NETWORK = {
+    "retry_total": 5,
+    "backoff_factor": 2,  # Wait 2s, 4s, 8s... on errors
+    "timeout": 30,
+    "batch_sleep": 0.5    # Sleep between listing pages
+}
 
-# --- 5. PERFORMANCE STRATEGY ---
+
+# --- 6. PERFORMANCE STRATEGY ---
 class ResourceAllocator:
     """
     Centralizes the logic for resource allocation.
-    Developers just ask for 'heavy_ram' or 'heavy_cpu' workers,
-    without worrying about Docker or Windows specifics.
     """
 
     @property
@@ -68,6 +72,14 @@ class ResourceAllocator:
         For Network/Disk tasks (e.g., Elastic Indexing, Downloading).
         """
         return 20 if IN_DOCKER else 8
+
+    @property
+    def download(self):
+        """
+        Specific worker count for downloading books.
+        13 was found to be the 'Sweet Spot' in benchmarks (Fast & Safe).
+        """
+        return 13
 
 
 WORKERS = ResourceAllocator()

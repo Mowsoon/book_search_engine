@@ -1,8 +1,8 @@
 import os
 import time
 import json
-import random
 import requests
+import concurrent.futures
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -13,12 +13,11 @@ except ImportError:
 
 
 def get_robust_session():
-    """Creates a requests session with automatic retry logic."""
+    """Creates a requests session with automatic retry logic from config."""
     session = requests.Session()
-    # Retry 3 times on connection errors or 5xx server errors
     retry_strategy = Retry(
-        total=3,
-        backoff_factor=1,
+        total=config.NETWORK["retry_total"],
+        backoff_factor=config.NETWORK["backoff_factor"],
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["HEAD", "GET", "OPTIONS"]
     )
@@ -30,7 +29,6 @@ def get_robust_session():
 
 def book_exists_on_disk(book_id):
     """Checks if the book file already exists locally."""
-    # Use new config structure: PATHS["books"]
     filename = os.path.join(config.PATHS["books"], f"{book_id}.txt")
     return os.path.exists(filename) and os.path.getsize(filename) > 0
 
@@ -47,129 +45,190 @@ def save_book_to_disk(book_id, text_content):
         return False
 
 
-def extract_metadata(book):
-    """Parses the API response to extract relevant book info."""
-    formats = book.get("formats", {})
-    text_url = (formats.get("text/plain; charset=utf-8") or
-                formats.get("text/plain; charset=us-ascii") or
-                formats.get("text/plain"))
-
-    # Skip check if we already have the book on disk
-    if not text_url and not book_exists_on_disk(book.get("id")):
-        return None, None
-
-    authors = book.get("authors", [])
-    author_name = authors[0].get("name") if authors else "Unknown"
-
-    metadata = {
-        "id": book.get("id"),
-        "title": book.get("title"),
-        "author": author_name,
-        "image_url": formats.get("image/jpeg"),
-        "gutenberg_id": book.get("id")
-    }
-    return metadata, text_url
+def get_text_url(book_data):
+    """Extracts the text URL from formats."""
+    formats = book_data.get("formats", {})
+    return (formats.get("text/plain; charset=utf-8") or
+            formats.get("text/plain; charset=us-ascii") or
+            formats.get("text/plain"))
 
 
-def process_single_book(session, book_data):
-    """Downloads book if needed, using the robust session."""
-    meta, url = extract_metadata(book_data)
-    if not meta:
-        return None
+def process_book_task(book_data):
+    """
+    Worker task: Checks existence, downloads if needed, validates constraint.
+    """
+    book_id = book_data.get("id")
 
-    if book_exists_on_disk(meta['id']):
-        return meta
+    # 1. Fast path: Check existing
+    if book_exists_on_disk(book_id):
+        authors = book_data.get("authors", [])
+        return {
+            "id": book_id,
+            "title": book_data.get("title"),
+            "author": authors[0].get("name") if authors else "Unknown",
+            "image_url": book_data.get("formats", {}).get("image/jpeg"),
+            "gutenberg_id": book_id,
+            "status": "exist"
+        }
 
+    # 2. Get URL
+    url = get_text_url(book_data)
     if not url:
         return None
 
+    # 3. Download with robust session
+    session = get_robust_session()
+
     try:
-        resp = session.get(url, timeout=20)
+        resp = session.get(url, timeout=config.NETWORK["timeout"])
+
+        # Even with retries, we might get a 429 if we exhausted attempts
+        if resp.status_code == 429:
+            return None
+
         resp.encoding = 'utf-8'
         text = resp.text
 
-        # Constraint: Check word count using new config structure
+        # 4. Constraint Check
         word_count = len(text.split())
         if word_count < config.CONSTRAINTS["min_words_per_book"]:
             return None
 
-        if save_book_to_disk(meta['id'], text):
-            meta['word_count'] = word_count
-            return meta
+        # 5. Save
+        if save_book_to_disk(book_id, text):
+            authors = book_data.get("authors", [])
+            return {
+                "id": book_id,
+                "title": book_data.get("title"),
+                "author": authors[0].get("name") if authors else "Unknown",
+                "image_url": book_data.get("formats", {}).get("image/jpeg"),
+                "gutenberg_id": book_id,
+                "word_count": word_count,
+                "status": "downloaded"
+            }
 
-    except Exception as e:
-        print(f"[WARN] Failed to download book {meta['id']}: {e}")
+    except Exception:
+        return None
 
     return None
 
 
 def fetch_books():
-    """Main loop."""
+    """Main execution loop using Optimized Turbo Logic."""
     books_dir = config.PATHS["books"]
     metadata_file = config.PATHS["metadata"]
     target_count = config.CONSTRAINTS["target_books"]
+    workers = config.WORKERS.download  # Using the tuned value (13)
 
     if not os.path.exists(books_dir):
         os.makedirs(books_dir)
 
-    session = get_robust_session()
+    # Load existing metadata for resume
     books_metadata = []
     existing_ids = set()
-
-    # Load existing metadata (Resume capability)
     if os.path.exists(metadata_file):
         try:
             with open(metadata_file, "r", encoding="utf-8") as f:
                 books_metadata = json.load(f)
                 existing_ids = {b['id'] for b in books_metadata}
-            print(f"Resuming... Loaded {len(books_metadata)} books from metadata.")
-        except json.JSONDecodeError:
-            print("Metadata corrupted. Starting fresh.")
+            print(f"Resuming... {len(books_metadata)} books already collected.")
+        except:
+            print("Metadata corrupted, starting fresh.")
 
     next_url = config.GUTENDEX_API
-    print(f"Target: {target_count} books.")
+    session = get_robust_session()
 
-    while next_url and len(books_metadata) < target_count:
-        try:
-            resp = session.get(next_url, timeout=30)
-            if resp.status_code != 200:
-                print(f"[ERROR] API Error {resp.status_code}. Retrying in 5s...")
-                time.sleep(5)
+    print(f"Target: {target_count} books.")
+    print(f"Strategy: Turbo Download ({workers} workers)")
+
+    # Future tracking
+    all_futures = []
+    stop_queuing = False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+
+        # PHASE 1: Aggressive Queueing (Fill the pipe)
+        while not stop_queuing and next_url:
+
+            # Stop fetching pages if we likely have enough tasks
+            # We estimate: current_meta + pending_futures >= target
+            pending_futures = [f for f in all_futures if not f.done()]
+            potential_total = len(books_metadata) + len(pending_futures)
+
+            if potential_total >= target_count + 50:  # Buffer of 50
+                # Wait for tasks to complete before queuing more
+                time.sleep(1)
+
+                # Check if we actually reached the target
+                if len(books_metadata) >= target_count:
+                    stop_queuing = True
+                    break
                 continue
 
-            data = resp.json()
-            next_url = data.get("next")
-
-            for book in data.get("results", []):
-                if len(books_metadata) >= target_count:
-                    break
-
-                if book.get("id") in existing_ids:
+            try:
+                # Fetch list page
+                resp = session.get(next_url, timeout=10)
+                if resp.status_code == 429:
+                    print("⚠️ API List Rate Limit. Waiting 10s...")
+                    time.sleep(10)
                     continue
 
-                saved_meta = process_single_book(session, book)
+                data = resp.json()
+                next_url = data.get("next")
+                results = data.get("results", [])
 
-                if saved_meta:
-                    books_metadata.append(saved_meta)
-                    existing_ids.add(saved_meta['id'])
+                for book in results:
+                    if book.get("id") not in existing_ids:
+                        future = executor.submit(process_book_task, book)
+                        all_futures.append(future)
 
-                    if len(books_metadata) % 10 == 0:
-                        print(f"Progress: {len(books_metadata)} books collected.")
-                        with open(metadata_file, "w", encoding="utf-8") as f:
-                            json.dump(books_metadata, f, indent=4)
+                # --- Harvest Results Logic ---
+                # We check completed tasks periodically to free memory
+                # and update the metadata list
+                done_indices = []
+                for i, future in enumerate(all_futures):
+                    if future.done():
+                        done_indices.append(i)
+                        res = future.result()
+                        if res:
+                            books_metadata.append(res)
+                            existing_ids.add(res['id'])
 
-            sleep_time = random.uniform(1.0, 3.0)
-            time.sleep(sleep_time)
+                            if len(books_metadata) % 50 == 0:
+                                print(f"Progress: {len(books_metadata)} books.")
+                                with open(metadata_file, "w", encoding="utf-8") as f:
+                                    json.dump(books_metadata, f, indent=4)
 
-        except Exception as e:
-            print(f"[CRITICAL] Main loop error: {e}")
-            print("Waiting 10s before trying to resume...")
-            time.sleep(10)
+                # Remove harvested futures from the list (in reverse order)
+                for i in reversed(done_indices):
+                    all_futures.pop(i)
 
+                if len(books_metadata) >= target_count:
+                    stop_queuing = True
+                    break
+
+                # Small sleep between list pages to be polite
+                time.sleep(config.NETWORK["batch_sleep"])
+
+            except Exception as e:
+                print(f"[ERROR] Page loop: {e}")
+                time.sleep(5)
+
+        # PHASE 2: Drain the queue
+        print("Finishing remaining downloads...")
+        for future in concurrent.futures.as_completed(all_futures):
+            if len(books_metadata) >= target_count:
+                break
+            res = future.result()
+            if res:
+                books_metadata.append(res)
+                existing_ids.add(res['id'])
+
+    # Final save
     with open(metadata_file, "w", encoding="utf-8") as f:
         json.dump(books_metadata, f, indent=4)
 
-    print(f"Finished. Total library size: {len(books_metadata)} books.")
+    print(f"Done. Total library size: {len(books_metadata)} books.")
 
 
 if __name__ == "__main__":
