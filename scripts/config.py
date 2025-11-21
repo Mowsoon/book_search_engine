@@ -17,6 +17,7 @@ PATHS = {
     "graph_csv": os.path.join(project_root, "data", "book_graph.csv"),
     "ranks_csv": os.path.join(project_root, "data", "book_ranks.csv"),
 }
+GUTENDEX_API = "http://gutendex.com/books/"
 
 # --- 3. ELASTICSEARCH CONFIGURATION ---
 # Grouping ES settings makes the client initialization cleaner
@@ -49,7 +50,7 @@ class ResourceAllocator:
         For tasks with high memory duplication (e.g., Jaccard Graph).
         """
         if IN_DOCKER:
-            return 12
+            return 10
         return min(6, SYSTEM_CORES)  # Safety limit for Windows spawn
 
     @property
