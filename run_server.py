@@ -30,3 +30,6 @@ def main():
     print("\n" + "=" * 40)
     print("Site available locally at http://127.0.0.1:8000")
     print("="*40)
+
+if __name__ == "__main__":
+    main()

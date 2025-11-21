@@ -5,7 +5,7 @@ def run_offline_task(script_name):
     """Helper to run a script in offline mode."""
     print(f"Running offline task: {script_name}...")
     cmd = [
-        "docker compose", "run", "--rm",
+        "docker-compose", "run", "--rm",
         "offline",
         "python", f"scripts/{script_name}"
     ]
@@ -19,7 +19,7 @@ def main():
     print("STARTING OFFLINE TASKS")
 
     print("Checking services...")
-    subprocess.check_call(["docker compose", "up", "-d", "elasticsearch"])
+    subprocess.check_call(["docker-compose", "up", "-d", "elasticsearch"])
 
     run_offline_task("download_books.py")
     run_offline_task("index_to_elasticsearch.py")
