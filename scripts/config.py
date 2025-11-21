@@ -13,7 +13,7 @@ METADATA_FILE = os.path.join(DATA_DIR, "metadata.json")
 GUTENDEX_API = "http://gutendex.com/books/"
 
 # --- Elasticsearch Configuration ---
-ES_HOST = 'http://localhost:9200'
+ES_HOST = os.environ.get('ES_HOST', 'http://localhost:9200')
 ES_INDEX_NAME = 'gutenberg_books'
 
 # --- Project Constraints ---

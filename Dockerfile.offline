@@ -1,0 +1,20 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY requirements.offline.txt .
+RUN pip install --no-cache-dir -r requirements.offline.txt
+
+# Téléchargement des stopwords NLTK dans l'image pour ne pas le refaire à chaque fois
+RUN python -m nltk.downloader stopwords
+
+# Copie des scripts
+COPY scripts/ ./scripts/
+# Création du dossier data (sera monté en volume)
+RUN mkdir -p data/books
+
+ENV IN_DOCKER=1
+ENV PYTHONUNBUFFERED=1
+
+# Par défaut, ce conteneur ne fait rien, il attend qu'on lui donne un script à lancer
+CMD ["tail", "-f", "/dev/null"]
