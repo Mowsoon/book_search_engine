@@ -7,8 +7,10 @@ from rest_framework.response import Response
 from elasticsearch_dsl import Search
 from elasticsearch import Elasticsearch
 
+
+ES_URL = os.environ.get("ES_HOST", "http://localhost:9200")
 # ES Client configuration
-ES_CLIENT = Elasticsearch("http://localhost:9200")
+ES_CLIENT = Elasticsearch(ES_URL)
 ES_INDEX = "gutenberg_books"
 
 
