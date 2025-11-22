@@ -117,7 +117,7 @@ def clean_orphans(valid_metadata):
     Removes .txt files that are not present in the metadata.
     Ensures consistency between disk and index.
     """
-    print("\n🧹 Starting final cleanup of orphan files...")
+    print("\nStarting final cleanup of orphan files...")
 
     # Create a set of valid IDs for O(1) lookup
     valid_ids = {str(book['id']) for book in valid_metadata}
@@ -169,7 +169,7 @@ def fetch_books():
     next_url = config.GUTENDEX_API
     session = get_robust_session()
 
-    print(f"Target: {target_count} books.")
+    print(f"Target (Minimum): {target_count} books.")
     print(f"Download with {workers} workers:")
 
     # Future tracking

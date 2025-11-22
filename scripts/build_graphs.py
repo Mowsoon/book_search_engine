@@ -152,7 +152,7 @@ def compute_centrality_parallel(edges):
     # Closeness (Parallel - Max Cores)
     cores = config.WORKERS.cpu_intensive
 
-    print(f"Calculating Closeness on {cores} cores (CPU Intensive)...")
+    print(f"Calculating Closeness on {cores} cores...")
     nodes_list = list(graph.nodes())
 
     if nodes_list:

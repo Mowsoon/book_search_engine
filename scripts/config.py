@@ -6,15 +6,15 @@ IN_DOCKER = os.environ.get('IN_DOCKER', '0') == '1'
 SYSTEM_CORES = multiprocessing.cpu_count()
 
 # --- 2. PATHS & FILES ---
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
 PATHS = {
-    "data": os.path.join(project_root, "data"),
-    "books": os.path.join(project_root, "data", "books"),
-    "metadata": os.path.join(project_root, "data", "metadata.json"),
-    "graph_csv": os.path.join(project_root, "data", "book_graph.csv"),
-    "ranks_csv": os.path.join(project_root, "data", "book_ranks.csv"),
+    "data": os.path.join(PROJECT_ROOT, "data"),
+    "books": os.path.join(PROJECT_ROOT, "data", "books"),
+    "metadata": os.path.join(PROJECT_ROOT, "data", "metadata.json"),
+    "graph_csv": os.path.join(PROJECT_ROOT, "data", "book_graph.csv"),
+    "ranks_csv": os.path.join(PROJECT_ROOT, "data", "book_ranks.csv"),
 }
 GUTENDEX_API = "http://gutendex.com/books/"
 
