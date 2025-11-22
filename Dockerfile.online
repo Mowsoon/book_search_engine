@@ -1,0 +1,36 @@
+# --- Stage 1: Builder  ---
+FROM python:3.13-slim as builder
+
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential
+
+
+COPY requirements.online.txt .
+RUN pip install --user --no-cache-dir -r requirements.online.txt
+
+# --- Stage 2: Final (Production Image) ---
+FROM python:3.13-slim
+
+RUN useradd -m appuser
+WORKDIR /app
+
+COPY --from=builder /root/.local /home/appuser/.local
+
+COPY back_end/ ./back_end/
+COPY front_end/ ./front_end/
+
+
+RUN mkdir -p data
+
+ENV IN_DOCKER=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+
+USER appuser
+
+WORKDIR /app/back_end
+
+EXPOSE 8000
+
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

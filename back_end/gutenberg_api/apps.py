@@ -19,9 +19,6 @@ class GutenbergApiConfig(AppConfig):
         # Prevent running twice with auto-reloader
         if os.environ.get('RUN_MAIN', None) != 'true':
             return
-
-        print("🚀 [GutenbergAPI] Loading ranking and graph data...")
-
         # 1. Load Ranks
         rank_path = os.path.join(settings.DATA_DIR, 'book_ranks.csv')
         if os.path.exists(rank_path):
@@ -29,11 +26,11 @@ class GutenbergApiConfig(AppConfig):
                 df = pd.read_csv(rank_path)
                 # Dict for O(1) access: id -> row_dict
                 self.book_ranks = df.set_index('id').to_dict('index')
-                print(f"   ✅ Loaded {len(self.book_ranks)} ranks.")
+                print(f"Loaded {len(self.book_ranks)} ranks.")
             except Exception as e:
-                print(f"   ❌ Error loading ranks: {e}")
+                print(f"Error loading ranks: {e}")
         else:
-            print(f"   ⚠️ Warning: {rank_path} missing.")
+            print(f"Warning: {rank_path} missing.")
 
         # 2. Load Graph (Adjacency List)
         graph_path = os.path.join(settings.DATA_DIR, 'book_graph.csv')
@@ -43,8 +40,8 @@ class GutenbergApiConfig(AppConfig):
                 # Group by source to get neighbors
                 grouped = df.groupby('source')['target'].apply(list)
                 self.book_graph = grouped.to_dict()
-                print(f"   ✅ Loaded graph for {len(self.book_graph)} books.")
+                print(f"Loaded graph for {len(self.book_graph)} books.")
             except Exception as e:
-                print(f"   ❌ Error loading graph: {e}")
+                print(f"Error loading graph: {e}")
         else:
-            print(f"   ⚠️ Warning: {graph_path} missing.")
+            print(f"Warning: {graph_path} missing.")

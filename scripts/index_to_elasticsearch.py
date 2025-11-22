@@ -4,6 +4,8 @@ import logging
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan
 from elasticsearch_dsl import Document, Text, Integer, Keyword, connections
+from multiprocessing import Pool
+import numpy as np
 
 try:
     import config
@@ -11,7 +13,7 @@ except ImportError:
     from scripts import config
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ class BookDocument(Document):
     content = Text(analyzer='standard')
 
     class Index:
-        name = config.ES_INDEX_NAME
+        name = config.ELASTIC["index_name"]
         settings = {
             "number_of_shards": 1,
             "number_of_replicas": 0
@@ -33,28 +35,26 @@ class BookDocument(Document):
 
 def init_elasticsearch():
     """Creates the index if it does not exist."""
-    connections.create_connection(hosts=[config.ES_HOST])
+    connections.create_connection(hosts=[config.ELASTIC["host"]])
+
     if not BookDocument._index.exists():
-        logger.info(f"Creating index '{config.ES_INDEX_NAME}'...")
+        logger.info(f"Creating index '{config.ELASTIC['index_name']}'...")
         BookDocument.init()
     else:
-        logger.info(f"Index '{config.ES_INDEX_NAME}' already exists.")
+        logger.info(f"Index '{config.ELASTIC['index_name']}' already exists.")
 
 
-def get_indexed_ids(es_client):
-    """
-    Retrieves all book IDs currently stored in the Elasticsearch index.
-    Returns a set of integers.
-    """
-    if not es_client.indices.exists(index=config.ES_INDEX_NAME):
+def get_indexed_ids(client):
+    """Retrieves all book IDs currently stored in the Elasticsearch index."""
+    index_name = config.ELASTIC["index_name"]
+
+    if not client.indices.exists(index=index_name):
         return set()
 
-    logger.info("Fetching existing document IDs from Elasticsearch...")
-    # 'scan' is an efficient way to retrieve all documents from an index
-    # We only need the _id field, so we disable _source to save bandwidth
+    logger.info("Scanning existing document IDs from Elasticsearch...")
     scanner = scan(
-        es_client,
-        index=config.ES_INDEX_NAME,
+        client,
+        index=index_name,
         query={"query": {"match_all": {}}, "_source": False}
     )
 
@@ -62,15 +62,15 @@ def get_indexed_ids(es_client):
     for hit in scanner:
         try:
             existing_ids.add(int(hit['_id']))
-        except ValueError:
-            continue  # Skip if ID is not an integer
+        except (ValueError, TypeError):
+            continue
 
     return existing_ids
 
 
 def load_book_content(book_id):
     """Reads book content from disk."""
-    file_path = os.path.join(config.BOOKS_DIR, f"{book_id}.txt")
+    file_path = os.path.join(config.PATHS["books"], f"{book_id}.txt")
     if not os.path.exists(file_path):
         return ""
     try:
@@ -83,7 +83,7 @@ def load_book_content(book_id):
 def create_doc(meta, content):
     """Helper to create a document dictionary."""
     return {
-        "_index": config.ES_INDEX_NAME,
+        "_index": config.ELASTIC["index_name"],
         "_id": meta.get("id"),
         "_source": {
             "gutenberg_id": meta.get("id"),
@@ -95,60 +95,87 @@ def create_doc(meta, content):
     }
 
 
-def generate_book_docs(metadata_subset):
-    """Yields document dictionaries for bulk indexing."""
-    total = len(metadata_subset)
-    for i, meta in enumerate(metadata_subset):
+def worker_index_batch(books_subset):
+    """
+    Worker function: Indexes a batch of books.
+    Each worker creates its own ES client connection.
+    """
+    # Create a dedicated client for this process
+    es = Elasticsearch(
+        hosts=[config.ELASTIC["host"]],
+        request_timeout=config.ELASTIC["timeout"]
+    )
+
+    docs = []
+    for meta in books_subset:
         book_id = meta.get("id")
         content = load_book_content(book_id)
 
         if not content:
             continue
 
-        yield create_doc(meta, content)
+        docs.append(create_doc(meta, content))
 
-        if (i + 1) % 50 == 0:
-            logger.info(f"Prepared {i + 1}/{total} books for bulk...")
+    if docs:
+        # Bulk insert this batch
+        success, failed = bulk(
+            es,
+            docs,
+            stats_only=True,
+            chunk_size=config.ELASTIC["bulk_chunk_size"]
+        )
+        return success, failed
+    return 0, 0
 
 
 def run_indexing():
-    """Main indexing routine with resume capability."""
+    """Main indexing routine with parallelism."""
+    # 1. Setup
     init_elasticsearch()
-    es = Elasticsearch(hosts=[config.ES_HOST])
+    es = Elasticsearch(hosts=[config.ELASTIC["host"]])
 
-    if not os.path.exists(config.METADATA_FILE):
+    metadata_file = config.PATHS["metadata"]
+    if not os.path.exists(metadata_file):
         logger.error("Metadata file missing. Run download first.")
         return
 
-    # 1. Load Local Metadata
-    with open(config.METADATA_FILE, "r", encoding="utf-8") as f:
-        all_books_meta = json.load(f)
+    # 2. Load Metadata & Check Existing
+    with open(metadata_file, "r", encoding="utf-8") as f:
+        all_books = json.load(f)
 
-    # 2. Get Already Indexed IDs
     indexed_ids = get_indexed_ids(es)
-    logger.info(f"Found {len(indexed_ids)} books already in index.")
+    logger.info(f"Found {len(indexed_ids)} books already indexed.")
 
-    # 3. Filter: Only keep books that are NOT in the index
-    books_to_index = [
-        b for b in all_books_meta
-        if b.get('id') not in indexed_ids
-    ]
+    new_books = [b for b in all_books if b.get('id') not in indexed_ids]
 
-    if not books_to_index:
+    if not new_books:
         logger.info("All books are up to date. Nothing to index.")
         return
 
-    logger.info(f"Starting indexing for {len(books_to_index)} new books...")
+    logger.info(f"Starting parallel indexing for {len(new_books)} new books...")
 
-    # 4. Bulk Indexing
-    success, failed = bulk(
-        es,
-        generate_book_docs(books_to_index),
-        stats_only=True,
-        chunk_size=50
-    )
+    # 3. Parallel Execution
+    workers = config.WORKERS.io_intensive
 
-    logger.info(f"Done. Added: {success}, Failed: {failed}")
+    num_chunks = workers * 2
+    if len(new_books) < num_chunks:
+        num_chunks = 1
+
+    chunks = np.array_split(new_books, num_chunks)
+
+    logger.info(f"Dispatching to {workers} workers (processing {num_chunks} batches)...")
+
+    total_success = 0
+    total_failed = 0
+
+    with Pool(processes=workers) as pool:
+        results = pool.map(worker_index_batch, chunks)
+
+    for s, f in results:
+        total_success += s
+        total_failed += f
+
+    logger.info(f"Indexing finished. Success: {total_success}, Failed: {total_failed}")
 
 
 if __name__ == "__main__":

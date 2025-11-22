@@ -1,0 +1,30 @@
+# --- Stage 1: Builder ---
+FROM python:3.13-slim as builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential
+
+COPY requirements.offline.txt .
+RUN pip install --user --no-cache-dir -r requirements.offline.txt
+
+RUN python -m nltk.downloader -d /usr/share/nltk_data stopwords
+
+# --- Stage 2: Final ---
+FROM python:3.13-slim
+
+RUN useradd -m scriptentity
+WORKDIR /app
+
+COPY --from=builder /root/.local /home/scriptentity/.local
+COPY --from=builder /usr/share/nltk_data /usr/share/nltk_data
+
+COPY scripts/ ./scripts/
+RUN mkdir -p data/books
+
+ENV IN_DOCKER=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH=/home/scriptentity/.local/bin:$PATH
+
+USER scriptentity
+CMD ["tail", "-f", "/dev/null"]

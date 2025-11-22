@@ -5,9 +5,65 @@ services:
     environment:
       - "discovery.type=single-node"
       - "xpack.security.enabled=false"
+      - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
     ports:
       - "9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
+    deploy:
+      resources:
+        limits:
+          memory: 9G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  online:
+    image: book_engine:online
+    build:
+      context: .
+      dockerfile: Dockerfile.online
+    container_name: django-api
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./back_end:/app/back_end
+      - ./front_end:/app/front_end
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  offline:
+    image: book_engine:offline
+    build:
+      context: .
+      dockerfile: Dockerfile.offline
+    container_name: worker-calc
+    volumes:
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+      - ./benchmarks:/app/benchmarks
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+    deploy:
+      resources:
+        limits:
+          cpus: '20'
+          memory: 20G
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
 volumes:
   es_data:

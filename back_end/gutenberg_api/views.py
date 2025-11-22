@@ -8,7 +8,8 @@ from elasticsearch_dsl import Search
 from elasticsearch import Elasticsearch
 
 # ES Client configuration
-ES_CLIENT = Elasticsearch("http://localhost:9200")
+ES_URL = os.environ.get("ES_HOST", "http://localhost:9200")
+ES_CLIENT = Elasticsearch(ES_URL)
 ES_INDEX = "gutenberg_books"
 
 
@@ -80,12 +81,12 @@ class SimpleSearchView(BaseSearchView):
         s = s.query("multi_match", query=query,
                     fields=['title^3', 'author^2', 'content'])
 
-        response = s[0:50].execute()  # Limit to top 50 candidates
+        response = s[0:50].execute()
         final_results = self.calculate_ranking(response)
 
         return Response({
             "count": len(final_results),
-            "results": final_results[:20]  # Return top 20
+            "results": final_results[:20]
         })
 
 
@@ -100,21 +101,14 @@ class AdvancedSearchView(BaseSearchView):
         if not regex:
             return Response({"error": "Missing 'q' parameter"}, status=400)
 
-        # --- CORRECTION ICI ---
-        # Elasticsearch indexe en minuscules ('standard' analyzer).
-        # On doit convertir la RegEx en minuscules pour qu'elle matche les tokens.
         regex = regex.lower()
-        # ----------------------
 
         s = Search(using=ES_CLIENT, index=ES_INDEX)
-        # ElasticSearch 'regexp' query
         s = s.query("regexp", content={"value": regex, "flags": "ALL"})
 
         try:
-            # On limite à 50 résultats car les RegEx sont coûteuses
             response = s[0:50].execute()
         except Exception as e:
-            # En cas de syntaxe RegEx invalide (ex: parenthèse non fermée)
             return Response({"error": f"Search Error: {str(e)}"}, status=400)
 
         final_results = self.calculate_ranking(response)

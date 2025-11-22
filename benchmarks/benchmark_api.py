@@ -116,7 +116,7 @@ def main():
         dict_writer.writeheader()
         dict_writer.writerows(all_results)
 
-    print(f"\n✅ Benchmark complete. Results saved to {OUTPUT_FILE}")
+    print(f"\nBenchmark complete. Results saved to {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":

@@ -1,38 +1,85 @@
 import os
 import multiprocessing
 
-# --- Path Configuration ---
+# --- 1. ENVIRONMENT CONTEXT ---
+IN_DOCKER = os.environ.get('IN_DOCKER', '0') == '1'
+SYSTEM_CORES = multiprocessing.cpu_count()
+
+# --- 2. PATHS & FILES ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-BOOKS_DIR = os.path.join(DATA_DIR, "books")
-METADATA_FILE = os.path.join(DATA_DIR, "metadata.json")
-
-# --- Gutendex API Configuration ---
+PATHS = {
+    "data": os.path.join(PROJECT_ROOT, "data"),
+    "books": os.path.join(PROJECT_ROOT, "data", "books"),
+    "metadata": os.path.join(PROJECT_ROOT, "data", "metadata.json"),
+    "graph_csv": os.path.join(PROJECT_ROOT, "data", "book_graph.csv"),
+    "ranks_csv": os.path.join(PROJECT_ROOT, "data", "book_ranks.csv"),
+}
 GUTENDEX_API = "http://gutendex.com/books/"
 
-# --- Elasticsearch Configuration ---
-ES_HOST = 'http://localhost:9200'
-ES_INDEX_NAME = 'gutenberg_books'
+# --- 3. ELASTICSEARCH CONFIGURATION ---
+ELASTIC = {
+    "host": os.environ.get('ES_HOST', 'http://localhost:9200'),
+    "index_name": 'gutenberg_books',
+    "timeout": 30,
+    "bulk_chunk_size": 50
+}
 
-# --- Project Constraints ---
-TARGET_BOOK_COUNT = 1670
-MIN_WORD_COUNT = 10000
+# --- 4. PROJECT CONSTRAINTS ---
+CONSTRAINTS = {
+    "target_books": 1670,
+    "min_words_per_book": 10000,
+    "jaccard_threshold": 0.15
+}
 
-# --- Graph & Ranking Outputs ---
-GRAPH_FILE = os.path.join(DATA_DIR, "book_graph.csv")
-RANK_FILE = os.path.join(DATA_DIR, "book_ranks.csv")
-JACCARD_THRESHOLD = 0.15
+# --- 5. NETWORK & RETRY STRATEGY ---
+NETWORK = {
+    "retry_total": 5,
+    "backoff_factor": 2,  # Wait 2s, 4s, 8s... on errors
+    "timeout": 30,
+    "batch_sleep": 0.5    # Sleep between listing pages
+}
 
-# --- Performance Configuration ---
-# 1. Heavy Task (Jaccard Similarity)
-# High RAM usage per process (needs book text in memory).
-# Limit this to avoid swapping/freezing on Windows.
-# We use 6 workers as a safe baseline for 32GB RAM.
-WORKERS_JACCARD = min(6, multiprocessing.cpu_count())
 
-# 2. Light Task (Closeness Centrality)
-# Low RAM usage (graph structure only), purely CPU bound.
-# We can safely use ALL available cores for maximum speed.
-WORKERS_CLOSENESS = multiprocessing.cpu_count()
+# --- 6. PERFORMANCE STRATEGY ---
+class ResourceAllocator:
+    """
+    Centralizes the logic for resource allocation.
+    """
+
+    @property
+    def ram_intensive(self):
+        """
+        For tasks with high memory duplication (e.g., Jaccard Graph).
+        """
+        if IN_DOCKER:
+            return 10
+        return min(6, SYSTEM_CORES)  # Safety limit for Windows spawn
+
+    @property
+    def cpu_intensive(self):
+        """
+        For tasks with low memory footprint (e.g., Closeness, PageRank).
+        """
+        if IN_DOCKER:
+            return 20  # Docker CPU limit
+        return SYSTEM_CORES
+
+    @property
+    def io_intensive(self):
+        """
+        For Network/Disk tasks (e.g., Elastic Indexing, Downloading).
+        """
+        return 8 if IN_DOCKER else 4
+
+    @property
+    def download(self):
+        """
+        Specific worker count for downloading books.
+        13 was found to be the 'Sweet Spot' in benchmarks (Fast & Safe).
+        """
+        return 13
+
+
+WORKERS = ResourceAllocator()
