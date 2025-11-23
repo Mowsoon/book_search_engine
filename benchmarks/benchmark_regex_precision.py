@@ -29,7 +29,7 @@ MAX_DOCS_FOR_COMPARE = 50
 
 def get_es_client():
     """Returns an Elasticsearch client instance."""
-    return Elasticsearch(config.ES_HOST)
+    return Elasticsearch(config.ELASTIC["host"])
 
 
 def strategy_fast_index(regex, client):
@@ -37,7 +37,7 @@ def strategy_fast_index(regex, client):
     Strategy A: Pure Index Search.
     Measures the time for Elasticsearch to find matching documents.
     """
-    s = Search(using=client, index=config.ES_INDEX_NAME)
+    s = Search(using=client, index=config.ELASTIC["index_name"])
     s = s.query("regexp", content={"value": regex.lower(), "flags": "ALL"})
 
     # Fix for DeprecationWarning: Use extra() for body params like track_total_hits
@@ -59,7 +59,7 @@ def strategy_precise_compute(regex, client, limit_docs):
     pattern = re.compile(regex, re.IGNORECASE)
 
     # 1. Get candidate IDs from Elastic
-    s = Search(using=client, index=config.ES_INDEX_NAME)
+    s = Search(using=client, index=config.ELASTIC["index_name"])
     s = s.query("regexp", content={"value": regex.lower(), "flags": "ALL"})
 
     # Fetch enough IDs to cover the test limit
@@ -79,7 +79,7 @@ def strategy_precise_compute(regex, client, limit_docs):
 
     # 2. The expensive loop
     for book_id in candidate_ids:
-        file_path = os.path.join(config.BOOKS_DIR, f"{book_id}.txt")
+        file_path = os.path.join(config.PATHS["books"], f"{book_id}.txt")
         if os.path.exists(file_path):
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -132,7 +132,7 @@ def main():
     df_scenarios = pd.DataFrame(results_scenarios)
     print("\n📊 SCENARIO SUMMARY:")
     print(df_scenarios.to_string())
-    df_scenarios.to_csv(os.path.join(config.DATA_DIR, "bench_scenarios.csv"), index=False)
+    df_scenarios.to_csv(os.path.join(config.PATHS["data"], "bench_scenarios.csv"), index=False)
 
     # --- PART 2: GROWTH CURVE ---
     print(f"\n\n🚀 PART 2: GROWTH CURVE (RegEx: '{GROWTH_REGEX}')")
@@ -160,7 +160,7 @@ def main():
         })
 
     df_growth = pd.DataFrame(results_growth)
-    output_growth = os.path.join(config.DATA_DIR, "bench_growth_curve.csv")
+    output_growth = os.path.join(config.PATHS["data"], "bench_growth_curve.csv")
     df_growth.to_csv(output_growth, index=False)
 
     print(f"\n✅ Growth data saved to {output_growth}")

@@ -3,15 +3,22 @@ import time
 import statistics
 import csv
 import os
+import sys
 
-from scripts.config import DATA_DIR
+# Ajout du path pour config (juste pour récupérer DATA_DIR)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from scripts import config
 
-# Configuration
-API_URL = "http://127.0.0.1:8000/api"
+# --- CONFIGURATION ---
+# Dans le réseau Docker, le service s'appelle "online" (défini dans docker-compose)
+# Le port interne est 8000.
+DEFAULT_URL = "http://online:8000/api"
+
+# On permet de surcharger via une variable d'env si besoin
+API_URL = os.environ.get("API_URL", DEFAULT_URL)
 ITERATIONS = 500
-OUTPUT_FILE = os.path.join(DATA_DIR, "api_performance_stats.csv")
+OUTPUT_FILE = os.path.join(config.PATHS["data"], "api_performance_stats.csv")
 
-# Define test scenarios
 SCENARIOS = [
     {
         "name": "Simple: 'Frankenstein'",
@@ -40,18 +47,17 @@ SCENARIOS = [
     },
     {
         "name": "Fuzzy: 'Victor Huga'",
-        "url": f"{API_URL}/search?q=Victor Huga",
+        "url": f"{API_URL}/search?q=Victor%20Huga",
         "type": "Fuzzy"
     }
 ]
 
 
 def run_test(scenario):
-    """Runs a single scenario N times and collects timings."""
     print(f"--- Testing: {scenario['name']} ---")
     latencies = []
 
-    # Warm-up request (to wake up caches/JIT)
+    # Warm-up
     try:
         requests.get(scenario['url'])
     except:
@@ -60,21 +66,20 @@ def run_test(scenario):
     for i in range(ITERATIONS):
         try:
             start = time.time()
-            resp = requests.get(scenario['url'], timeout=10)
-            duration = (time.time() - start) * 1000  # Convert to ms
+            resp = requests.get(scenario['url'], timeout=30)
+            duration = (time.time() - start) * 1000
 
             if resp.status_code == 200:
                 latencies.append(duration)
             else:
-                print(f"Error {resp.status_code}")
+                if i == 0: print(f"⚠️ Status {resp.status_code}: {resp.text[:100]}")
         except Exception as e:
-            print(f"Request failed: {e}")
+            if i == 0: print(f"⚠️ Connection failed: {e}")
 
     return latencies
 
 
 def calculate_stats(latencies):
-    """Computes statistical metrics."""
     if not latencies:
         return None
     return {
@@ -87,8 +92,9 @@ def calculate_stats(latencies):
 
 
 def main():
-    print(f"🚀 Starting API Benchmark ({ITERATIONS} iterations per test)...")
-    print("Ensure Django is running on port 8000!")
+    print(f"🚀 STARTING INTERNAL DOCKER BENCHMARK")
+    print(f"🎯 Target: {API_URL}")
+    print(f"📊 Output: {OUTPUT_FILE}")
 
     all_results = []
 
@@ -108,15 +114,16 @@ def main():
                 "Median (ms)": round(stats['median'], 2),
                 "StDev (ms)": round(stats['stdev'], 2)
             })
+        else:
+            print("   ❌ Failed (0 successes)")
 
-    # Save to CSV
-    keys = all_results[0].keys()
-    with open(OUTPUT_FILE, 'w', newline='') as f:
-        dict_writer = csv.DictWriter(f, fieldnames=keys)
-        dict_writer.writeheader()
-        dict_writer.writerows(all_results)
-
-    print(f"\nBenchmark complete. Results saved to {OUTPUT_FILE}")
+    if all_results:
+        keys = all_results[0].keys()
+        with open(OUTPUT_FILE, 'w', newline='') as f:
+            dict_writer = csv.DictWriter(f, fieldnames=keys)
+            dict_writer.writeheader()
+            dict_writer.writerows(all_results)
+        print(f"\n✅ Done.")
 
 
 if __name__ == "__main__":
